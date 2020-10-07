@@ -7,7 +7,7 @@
 use std::path::Path;
 
 use failure::Error;
-use sgxs::loader::{Load, MappingInfo};
+use sgxs::loader::{Load, MappingInfo, EnclaveControl};
 
 use crate::loader::{EnclaveBuilder, ErasedTcs};
 use crate::usercalls::EnclaveState;
@@ -21,17 +21,24 @@ pub struct Command {
     address: usize,
     size: usize,
     usercall_ext: Option<Box<dyn UsercallExtension>>,
+    enclave_controller: Option<Box<dyn EnclaveControl>>,
     forward_panics: bool,
     cmd_args: Vec<Vec<u8>>,
 }
 
 impl MappingInfo for Command {
+    type EnclaveControl = Box<dyn EnclaveControl>;
+
     fn address(&self) -> *mut c_void {
         self.address as _
     }
 
     fn size(&self) -> usize {
         self.size
+    }
+
+    fn enclave_controller(&mut self) -> Option<Box<dyn EnclaveControl>> {
+        self.enclave_controller.take()
     }
 }
 
@@ -43,6 +50,7 @@ impl Command {
         address: *mut c_void,
         size: usize,
         usercall_ext: Option<Box<dyn UsercallExtension>>,
+        enclave_controller: Option<Box<dyn EnclaveControl>>,
         forward_panics: bool,
         cmd_args: Vec<Vec<u8>>,
     ) -> Command {
@@ -53,16 +61,18 @@ impl Command {
             address: address as _,
             size,
             usercall_ext,
+            enclave_controller,
             forward_panics,
             cmd_args,
         }
     }
 
-    pub fn new<P: AsRef<Path>, L: Load>(enclave_path: P, loader: &mut L) -> Result<Command, Error> {
+    pub fn new<P: AsRef<Path>, L: Load>(enclave_path: P, loader: &mut L) -> Result<Command, Error>
+        where <<L as Load>::MappingInfo as MappingInfo>::EnclaveControl: EnclaveControl {
         EnclaveBuilder::new(enclave_path.as_ref()).build(loader)
     }
 
     pub fn run(self) -> Result<(), Error> {
-        EnclaveState::main_entry(self.main, self.threads, self.usercall_ext, self.forward_panics, self.cmd_args)
+        EnclaveState::main_entry(self.main, self.threads, self.usercall_ext, self.enclave_controller, self.forward_panics, self.cmd_args)
     }
 }

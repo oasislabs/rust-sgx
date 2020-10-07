@@ -126,6 +126,7 @@ impl EinittokenError for Error {
 }
 
 impl EnclaveLoad for InnerLibrary {
+    type EnclaveController = ();
     type Error = Error;
 
     fn new(
@@ -272,6 +273,10 @@ impl EnclaveLoad for InnerLibrary {
             (mapping.device.enclave_delete)(mapping.base as _, None);
         }
     }
+
+    fn create_controller(_mapping: &Mapping<Self>) -> Self::EnclaveController {
+        ()
+    }
 }
 
 struct InnerLibrary {
@@ -344,7 +349,7 @@ impl Library {
 }
 
 impl loader::Load for Library {
-    type MappingInfo = MappingInfo;
+    type MappingInfo = MappingInfo<()>;
     type Tcs = Tcs;
 
     fn load<R: SgxsRead>(

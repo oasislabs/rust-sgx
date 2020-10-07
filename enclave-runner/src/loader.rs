@@ -4,6 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+use std::fmt::Debug;
 use std::fs::File;
 use std::io::{Error as IoError, ErrorKind, Read, Result as IoResult};
 use std::os::raw::c_void;
@@ -22,6 +23,7 @@ use openssl::{
 use sgx_isa::{Attributes, AttributesFlags, Miscselect, Sigstruct};
 use sgxs::crypto::{SgxHashOps, SgxRsaOps};
 use sgxs::loader::{Load, MappingInfo, Tcs};
+use sgxs::loader::{EnclaveControl};
 use sgxs::sigstruct::{self, EnclaveHash, Signer};
 
 use crate::tcs::DebugBuffer;
@@ -308,7 +310,7 @@ impl<'a> EnclaveBuilder<'a> {
     fn load<T: Load>(
         mut self,
         loader: &mut T,
-    ) -> Result<(Vec<ErasedTcs>, *mut c_void, usize, bool), Error> {
+    ) -> Result<(Vec<ErasedTcs>, *mut c_void, usize, Option<<<T as Load>::MappingInfo as MappingInfo>::EnclaveControl>, bool), Error> {
         let signature = match self.signature {
             Some(sig) => sig,
             None => self
@@ -317,7 +319,7 @@ impl<'a> EnclaveBuilder<'a> {
         };
         let attributes = self.attributes.unwrap_or(signature.attributes);
         let miscselect = self.miscselect.unwrap_or(signature.miscselect);
-        let mapping = loader.load(&mut self.enclave, &signature, attributes, miscselect)?;
+        let mut mapping = loader.load(&mut self.enclave, &signature, attributes, miscselect)?;
         let forward_panics = self.forward_panics;
         if mapping.tcss.is_empty() {
             unimplemented!()
@@ -326,15 +328,19 @@ impl<'a> EnclaveBuilder<'a> {
             mapping.tcss.into_iter().map(ErasedTcs::new).collect(),
             mapping.info.address(),
             mapping.info.size(),
+            mapping.info.enclave_controller(),
             forward_panics,
         ))
     }
 
-    pub fn build<T: Load>(mut self, loader: &mut T) -> Result<Command, Error> {
+    pub fn build<C: Debug + EnclaveControl, M: MappingInfo<EnclaveControl=C>, T: Load<MappingInfo=M>>(mut self, loader: &mut T) -> Result<Command, Error> {
         let args = self.cmd_args.take().unwrap_or_default();
         let c = self.usercall_ext.take();
         self.load(loader)
-            .map(|(t, a, s, fp)| Command::internal_new(t, a, s, c, fp, args))
+            .map(|(t, a, s, ctr, fp)| {
+                let ctr = ctr.map(|c| Box::new(c) as Box<dyn EnclaveControl>);
+                Command::internal_new(t, a, s, c, ctr, fp, args)
+            })
     }
 
     /// Panics if you have previously called [`arg`] or [`args`].
@@ -347,6 +353,6 @@ impl<'a> EnclaveBuilder<'a> {
         }
         let c = self.usercall_ext.take();
         self.load(loader)
-            .map(|(t, a, s, fp)| Library::internal_new(t, a, s, c, fp))
+            .map(|(t, a, s, _ctr, fp)| Library::internal_new(t, a, s, c, fp))
     }
 }

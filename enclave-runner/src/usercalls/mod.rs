@@ -34,7 +34,7 @@ use tokio::sync::mpsc as async_mpsc;
 
 use fortanix_sgx_abi::*;
 use ipc_queue::{self, DescriptorGuard, Identified, QueueEvent};
-use sgxs::loader::Tcs as SgxsTcs;
+use sgxs::loader::{EnclaveControl, Tcs as SgxsTcs};
 
 use crate::loader::{EnclavePanic, ErasedTcs};
 use crate::tcs::{self, CoResult, ThreadResult};
@@ -596,6 +596,7 @@ pub(crate) struct EnclaveState {
     last_fd: AtomicUsize,
     exiting: AtomicBool,
     usercall_ext: Box<dyn UsercallExtension>,
+    enclave_controller: Option<Box<dyn EnclaveControl>>,
     threads_queue: crossbeam::queue::SegQueue<StoppedTcs>,
     forward_panics: bool,
     // Once set to Some, the guards should not be dropped for the lifetime of the enclave.
@@ -650,6 +651,7 @@ impl EnclaveState {
         kind: EnclaveKind,
         mut event_queues: FnvHashMap<TcsAddress, futures::channel::mpsc::UnboundedSender<u8>>,
         usercall_ext: Option<Box<dyn UsercallExtension>>,
+        enclave_controller: Option<Box<dyn EnclaveControl>>,
         threads_vector: Vec<ErasedTcs>,
         forward_panics: bool,
     ) -> Arc<Self> {
@@ -689,6 +691,7 @@ impl EnclaveState {
             fds: Mutex::new(fds),
             last_fd,
             exiting: AtomicBool::new(false),
+            enclave_controller,
             usercall_ext,
             threads_queue,
             forward_panics,
@@ -955,6 +958,7 @@ impl EnclaveState {
         main: ErasedTcs,
         threads: Vec<ErasedTcs>,
         usercall_ext: Option<Box<dyn UsercallExtension>>,
+        enclave_controller: Option<Box<dyn EnclaveControl>>,
         forward_panics: bool,
         cmd_args: Vec<Vec<u8>>,
     ) -> StdResult<(), failure::Error> {
@@ -989,7 +993,7 @@ impl EnclaveState {
                 other_reasons: vec![],
             }),
         });
-        let enclave = EnclaveState::new(kind, event_queues, usercall_ext, threads, forward_panics);
+        let enclave = EnclaveState::new(kind, event_queues, usercall_ext, enclave_controller, threads, forward_panics);
 
         let main_result = EnclaveState::run(enclave.clone(), num_of_worker_threads, main_work);
 
@@ -1046,7 +1050,7 @@ impl EnclaveState {
 
         let kind = EnclaveKind::Library(Library {});
 
-        let enclave = EnclaveState::new(kind, event_queues, usercall_ext, threads, forward_panics);
+        let enclave = EnclaveState::new(kind, event_queues, usercall_ext, None, threads, forward_panics);
         return enclave;
     }
 

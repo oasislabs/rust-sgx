@@ -32,12 +32,18 @@ impl fmt::Debug for Library {
 }
 
 impl MappingInfo for Library {
+    type EnclaveControl = ();
+
     fn address(&self) -> *mut c_void {
         self.address
     }
 
     fn size(&self) -> usize {
         self.size
+    }
+
+    fn enclave_controller(&mut self) -> Option<()> {
+        None
     }
 }
 
