@@ -1583,6 +1583,18 @@ impl<'tcs> IOHandlerInput<'tcs> {
         }
     }
 
+    fn trim(&self, region: *const u8, size: usize) -> IoResult<()> {
+        println!("Calling driver to trim enclave region {:?}:{:x}", region, size);
+        match &(*self.enclave).enclave_controller {
+            Some(ctr) => {
+                ctr.trim(region as _, size).map_err(|e| io::Error::new(io::ErrorKind::PermissionDenied, e))
+            },
+            None => {
+                Err(io::Error::new(io::ErrorKind::NotFound, "Enclave controller not found"))
+            }
+        }
+    }
+
     #[inline(always)]
     async fn async_queues(
         &mut self,
