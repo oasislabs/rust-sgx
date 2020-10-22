@@ -83,6 +83,8 @@ pub enum Error {
     Init(#[cause] SgxIoctlError),
     #[fail(display = "Failed to trim region.")]
     Trim(#[cause] SgxIoctlError),
+    #[fail(display = "Failed to remove trimmed region.")]
+    RemoveTrimmed(#[cause] SgxIoctlError),
 }
 
 impl Error {
@@ -477,7 +479,7 @@ impl EnclaveControl for EnclaveController {
                     start_addr: addr as _,
                     nr_pages: (size / 0x1000) as _,
                 };
-                let result = ioctl_unsafe!{Trim, ioctl::montgomery::notify_accept(fd.as_raw_fd(), &range)};
+                let result = ioctl_unsafe!{RemoveTrimmed, ioctl::montgomery::notify_accept(fd.as_raw_fd(), &range)};
                 result.map_err(|e| e.into())
             },
         }
